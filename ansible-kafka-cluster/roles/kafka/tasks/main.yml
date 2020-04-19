@@ -1,0 +1,126 @@
+- include_vars: variables.yml
+
+
+- shell: 'find {{kafka_path}}/libs/ -name \*kafka_\* | head -1 | grep -o "\kafka[^\n]*"'
+  register: current_kafka_version
+  ignore_errors: True
+
+- debug: var=current_kafka_version
+
+- set_fact: kafka_insalled="false"
+  when: current_kafka_version is defined and kafka_ver not in current_kafka_version.stdout
+
+
+- shell: rm -rf "{{kafka_path}}/logs"
+
+
+- block:
+
+  - name: disable firewalld
+    service: name=firewalld state=stopped enabled=no
+    ignore_errors: True  #when firewalld is stopped
+
+  - name: download kafka tgz
+    shell: "curl {{kafka_url}} --output /tmp/{{kafka_ver}}.tgz"
+
+  - name: clean old kafka directories
+    file:
+      state: absent
+      path: "{{item}}"
+    with_items:
+      - "{{kafka_path}}"
+      - "/tmp/kafka-logs/"
+
+  - name: "Extract {{kafka_ver}}.tgz into {{kafka_path}}"
+    unarchive:
+      src: /tmp/{{kafka_ver}}.tgz
+      dest: /opt/
+      remote_src: yes
+
+  - name: rename kafka dir
+    shell: mv /opt/{{kafka_ver}} {{kafka_path}}
+  when: kafka_insalled is defined
+
+- name: "update configs"
+  template:
+    src: "{{item}}.j2"
+    dest: "{{kafka_path}}/config/{{item}}"
+  with_items:
+    - producer.properties
+    - server.properties
+    - zookeeper.properties
+
+- name: create kafka dirs if it does not exist
+  file:
+    path: "{{item}}"
+    state: directory
+    mode: '777'
+  with_items: 
+    - "{{kafka_path}}/logs"
+    - "{{kafka_path}}/zookeeper"
+
+
+- name: create zookeeper id file
+  copy:
+    dest: "{{kafka_path}}/zookeeper/myid"
+    content: |
+        {{groups['kafka_nodes'].index(inventory_hostname)}}
+
+- name: update systemd start script
+  template:
+    src: "{{item}}-systemd.j2"
+    dest: "/etc/systemd/system/{{item}}.service"
+    owner: root
+    group: root
+    mode: 644
+  with_items:
+    - kafka
+    - zookeeper
+
+- name: update start script
+  blockinfile:
+    path: "{{kafka_path}}/bin/kafka-server-start.sh"
+    insertbefore: "^EXTRA_ARGS="
+    block: |
+      export JMX_PORT=${JMX_PORT:-9999}
+
+#- name: "update zookeeper config"
+#  replace:
+#    path: "{{kafka_path}}/config/zookeeper.properties"
+#    regexp: "{{ ansible_ssh_host }}"
+#    replace: "0.0.0.0"
+
+- name: Give  permissions to folders
+  file:
+    path: "{{kafka_path}}"
+    mode: "777"
+    state: directory
+
+
+- name: reload systemctl
+  shell: systemctl daemon-reload
+
+- name: "enable kafka to start on boot"
+  service:
+    name: "{{item}}"
+    enabled: yes
+  ignore_errors: True
+  with_items:
+    - kafka
+    - zookeeper
+
+- name: "restart zookeeper"
+  service:
+    name: "{{item}}"
+    state: restarted
+  with_items:
+    - zookeeper
+
+- pause: seconds=15
+
+- name: "restart kafka"
+  service:
+    name: "{{item}}"
+    state: restarted
+  with_items:
+    - kafka

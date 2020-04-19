@@ -1,0 +1,7 @@
+- hosts: kafka_nodes
+  gather_facts: true
+  roles:
+      - { role: common, become: yes }
+      - { role: java, become: yes }
+      - { role: kafka, become: yes }
+      - { role: crons, become: yes }

@@ -1,0 +1,32 @@
+- include_vars: variables.yml
+
+
+- name: copy health_check file
+  become: yes
+  copy:
+    src: files/kafka_health_check.sh
+    dest: "{{kafka_path}}/bin/kafka_health_check.sh"
+    mode: a+x
+
+
+- name: touch the log file
+  file:
+    path: /tmp/kafka_health_check.log
+    state: touch
+    mode: a+rwx
+
+- name: delete kafka_health_check.log log 
+  cron:
+    name: "delete kafka_health_check.log log"
+    job: "/bin/bash rm -rf /tmp/kafka_health_check.log"
+    hour: "2"
+    state: "present"
+
+
+- name: update kafka health_check to crontab
+  cron:
+    name: "check kafka health_check"
+    job: "/bin/bash {{kafka_path}}/bin/kafka_health_check.sh >> /tmp/kafka_health_check.log"
+    minute: "*/10"
+    state: "present"
+ 

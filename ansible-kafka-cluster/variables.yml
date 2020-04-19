@@ -1,0 +1,8 @@
+---
+
+#relevant url's
+  kafka_ver: kafka_2.11-2.4.0
+  kafka_url: "https://downloads.apache.org/kafka/2.4.0/kafka_2.11-2.4.0.tgz"
+
+#local path's
+  kafka_path: "/opt/kafka"
